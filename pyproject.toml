@@ -5,7 +5,7 @@ requires-python = ">=3.14"
 dependencies = ["pdfplumber", "pandas"]
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest"]
+dev = ["ruff", "mypy", "pytest", "pre-commit"]
 
 [build-system]
 requires = ["setuptools>=61"]
