@@ -6,14 +6,19 @@ from typing import Any
 
 import pdfplumber
 
+# Source PDF
+TALLA_2024_PATH = Path("data/raw/talla_2024.pdf")
+TALLA_2024_URL = "https://portal.siinsan.gob.gt/archivos/censo_02.pdf"
 TALLA_2024_SHA256 = "d3eb1c112cd3f5480aa8180a3573234f19ae4c0c95218e5f416d4751d762eea2"
-TALLA_2024_PATH: Path = Path("data/raw/talla_2024.pdf")
-TALLA_2024_URL: str = "https://portal.siinsan.gob.gt/archivos/censo_02.pdf"
-ISSUES_URL: str = "https://github.com/JulianKeerl/guatemala-municipal-atlas/issues"
-MAX_COLUMN_DISTANCE = 8.0
-Word = dict[str, Any]
+ISSUES_URL = "https://github.com/JulianKeerl/guatemala-municipal-atlas/issues"
+
+# Annex 4 Layout: the table text is 5.6 and the font is Aptos
 TABLE_FONT_SIZE = 5.6
-ABSOLUTE_ERROR = 0.1
+FONT_SIZE_TOLERANCE = 0.1
+MAX_COLUMN_DISTANCE = 8.0
+TABLE_FONT_NAME = "Aptos"
+
+# Right edge (x1) of each number column, even pages are shifted
 ODD_PAGE_COLUMNS: dict[str, float] = {
     "n_1986": 191.3,
     "pct_1986": 212.1,
@@ -49,6 +54,9 @@ EVEN_PAGE_COLUMNS: dict[str, float] = {
     "diff_2024_1986": 510.9,
 }
 
+# Types
+Word = dict[str, Any]
+
 
 def verify_pdf(pdf_path: Path, pdf_url: str, expected_sha256: str) -> None:
     if not pdf_path.exists():
@@ -70,9 +78,9 @@ def is_table_text(pdf_object: dict[str, Any]) -> bool:
         return False
 
     fontsize_check = math.isclose(
-        pdf_object["size"], TABLE_FONT_SIZE, abs_tol=ABSOLUTE_ERROR
+        pdf_object["size"], TABLE_FONT_SIZE, abs_tol=FONT_SIZE_TOLERANCE
     )
-    fontname_check = pdf_object["fontname"].endswith("Aptos")
+    fontname_check = pdf_object["fontname"].endswith(TABLE_FONT_NAME)
 
     return fontsize_check and fontname_check
 
@@ -92,7 +100,7 @@ def parse_line(
     """Split one table line into (row id, name, {column: value})."""
     words = sorted(words, key=lambda w: w["x0"])
 
-    # if it's a number it's a row id. Some lines are multilines and wrapped, their id field will be set to None.
+    # A row starts with an id number, however line wrappings can occur, in those instances we set it to None
     row_id: int | None = None
     if words[0]["text"].isdigit():
         row_id = int(words[0]["text"])
@@ -115,22 +123,18 @@ def parse_line(
 
 
 def read_lines(pdf_path: Path) -> dict[tuple[int, int], list[Word]]:
-    rows: defaultdict[tuple[int, int], list[Word]] = defaultdict(list)
+    lines: defaultdict[tuple[int, int], list[Word]] = defaultdict(list)
     with pdfplumber.open(pdf_path) as pdf:
-        # these pages have the actual data and tables
-        for relevant_page in range(166, 176):
-            page = pdf.pages[relevant_page]
+        for page in pdf.pages[166:176]:  # these pages have the actual data and tables
             filtered_page = page.filter(is_table_text)
-
             for word in filtered_page.extract_words():
-                # Use page.page_number (PDF page 167–176), not relevant_page (list index 166–175), so odd/even matches the layout
-                rows[(page.page_number, round(word["top"]))].append(word)
-    return rows
+                lines[(page.page_number, round(word["top"]))].append(word)
+    return lines
 
 
 if __name__ == "__main__":
     verify_pdf(TALLA_2024_PATH, TALLA_2024_URL, TALLA_2024_SHA256)
 
-    for (page_number, top), words in read_lines(TALLA_2024_PATH).items():
+    for (page_number, _), words in read_lines(TALLA_2024_PATH).items():
         columns = ODD_PAGE_COLUMNS if page_number % 2 else EVEN_PAGE_COLUMNS
         print(parse_line(words, columns))
