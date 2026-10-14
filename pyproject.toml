@@ -1,0 +1,12 @@
+[project]
+name = "atlas"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = ["pdfplumber", "pandas"]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy", "pytest"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
