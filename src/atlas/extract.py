@@ -24,6 +24,11 @@ DEPARTMENT_FONT_NAME = "Aptos-Bold"
 FONT_SIZE_TOLERANCE = 0.1
 MAX_COLUMN_DISTANCE = 8.0
 
+# The table in annex 4 is missing two headers from two department
+# {row id:department name}
+MISSING_DEPARTMENTS = {286: "ALTA VERAPAZ", 322: "ZACAPA"}
+DEPARTMENT_COUNT = 22
+
 # Right edge (x1) of each number column, even pages are shifted
 ODD_PAGE_COLUMNS: dict[str, float] = {
     "n_1986": 191.3,
@@ -68,7 +73,7 @@ type Position = tuple[int, int]
 
 @dataclass
 class TableLine:
-    """A raw line of the table: a row, a heading or half a wrapped name."""
+    """A raw line of the table: a row, a heading or part of a multiline name."""
 
     row_id: int | None  # None for headings and names that are multiline
     name: str
@@ -78,8 +83,9 @@ class TableLine:
 
 @dataclass
 class TableRow:
-    """One row of the table: a municipio/zone, with its values."""
+    """One row of the table: a municipio/zone, its department and its values."""
 
+    department: str
     row_id: int
     name: str
     values: dict[str, float]
@@ -102,7 +108,7 @@ def verify_pdf(pdf_path: Path, pdf_url: str, expected_sha256: str) -> None:
 
 
 def matches_style(pdf_object: PdfObject, font_name: str, font_size: float) -> bool:
-    """Return true if pdf object is a character in the given font and size."""
+    """Return True if pdf object is a character in the given font and size."""
     if pdf_object["object_type"] != "char":
         return False
 
@@ -134,11 +140,11 @@ def parse_number(text: str) -> float | None:
 
 
 def parse_line(words: list[Word], columns: dict[str, float]) -> TableLine:
-    """Splits one raw line of the table into a table line"""
+    """Split one raw line of the table into a table line"""
     words = sorted(words, key=lambda w: w["x0"])
 
-    # A row starts with an id number, however line wrappings can occur, in those
-    # instances we set it to None
+    # A row starts with an id number, however names could be on multiple lines, in
+    # those instances we set it to None
     row_id: int | None = None
     if words[0]["text"].isdigit():
         row_id = int(words[0]["text"])
@@ -184,17 +190,36 @@ def read_lines(pdf_path: Path) -> list[tuple[Position, list[Word]]]:
     return sorted(lines.items())
 
 
-def join_wrapped_names(parsed: list[TableLine]) -> list[TableRow]:
-    """Rebuild names printed on two lines and only keep rows with an id."""
+def assemble_rows(parsed: list[TableLine]) -> list[TableRow]:
+    """Join multiline names, assign departments and only keep rows with an id."""
     rows: list[TableRow] = []
+    # rows 1 through 26 (Guatemala city zones) are listed before the first heading
+    department: str = "GUATEMALA"
     for i, table_line in enumerate(parsed):
+        if table_line.is_department:
+            department = table_line.name
+            continue
         if table_line.row_id is None:
-            continue  # lines without a row_id are halfs of a wrapped name or a heading
+            continue  # lines without a row_id are names on multilines
+        if table_line.row_id in MISSING_DEPARTMENTS:
+            department = MISSING_DEPARTMENTS[table_line.row_id]
         name = table_line.name
         if name == "":
             name = parsed[i - 1].name + " " + parsed[i + 1].name
+
         rows.append(
-            TableRow(row_id=table_line.row_id, name=name, values=table_line.values)
+            TableRow(
+                department=department,
+                row_id=table_line.row_id,
+                name=name,
+                values=table_line.values,
+            )
+        )
+    unique_departments = {row.department for row in rows}
+    if len(unique_departments) != DEPARTMENT_COUNT:
+        raise ValueError(
+            f"Expected {DEPARTMENT_COUNT} departments, found"
+            f" {len(unique_departments)}: {sorted(unique_departments)}."
         )
     return rows
 
@@ -206,5 +231,5 @@ if __name__ == "__main__":
         columns = ODD_PAGE_COLUMNS if page_number % 2 else EVEN_PAGE_COLUMNS
         parsed_lines.append(parse_line(words, columns))
 
-    rows = join_wrapped_names(parsed_lines)
+    rows = assemble_rows(parsed_lines)
     print(rows)
