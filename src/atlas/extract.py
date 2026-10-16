@@ -59,6 +59,7 @@ Word = dict[str, Any]
 
 
 def verify_pdf(pdf_path: Path, pdf_url: str, expected_sha256: str) -> None:
+    """Check that the pdf exists and is the expected version."""
     if not pdf_path.exists():
         raise FileNotFoundError(f"{pdf_path} not found. Download it from {pdf_url}")
 
@@ -74,6 +75,7 @@ def verify_pdf(pdf_path: Path, pdf_url: str, expected_sha256: str) -> None:
 
 
 def is_table_text(pdf_object: dict[str, Any]) -> bool:
+    """Returns True for visible characters with TABLE_FONT_SIZE and TABLE_FONT_NAME."""
     if pdf_object["object_type"] != "char":
         return False
 
@@ -86,7 +88,7 @@ def is_table_text(pdf_object: dict[str, Any]) -> bool:
 
 
 def parse_number(text: str) -> float | None:
-    """Return the value of a table number like "1,804" or "-8.7", or None if it isn't one."""
+    """Return the value of a table number like "1,804" or "-8.7", or None."""
     try:
         # remove the thousands separators ','
         return float(text.replace(",", ""))
