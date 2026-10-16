@@ -12,11 +12,16 @@ TALLA_2024_URL = "https://portal.siinsan.gob.gt/archivos/censo_02.pdf"
 TALLA_2024_SHA256 = "d3eb1c112cd3f5480aa8180a3573234f19ae4c0c95218e5f416d4751d762eea2"
 ISSUES_URL = "https://github.com/JulianKeerl/guatemala-municipal-atlas/issues"
 
-# Annex 4 Layout: the table text is 5.6 and the font is Aptos
+# Annex 4 Layout: the table is printed twice, one table has the font size 5.6pt (the one
+# that we use as it is the one that lines up with the visible grid) and one at 7.0pt
+# Department headings are bold and at 7.3 pt font size
 TABLE_FONT_SIZE = 5.6
+TABLE_FONT_NAME = "Aptos"
+DEPARTMENT_FONT_SIZE = 7.3
+DEPARTMENT_FONT_NAME = "Aptos-Bold"
+
 FONT_SIZE_TOLERANCE = 0.1
 MAX_COLUMN_DISTANCE = 8.0
-TABLE_FONT_NAME = "Aptos"
 
 # Right edge (x1) of each number column, even pages are shifted
 ODD_PAGE_COLUMNS: dict[str, float] = {
@@ -74,17 +79,27 @@ def verify_pdf(pdf_path: Path, pdf_url: str, expected_sha256: str) -> None:
         )
 
 
-def is_table_text(pdf_object: dict[str, Any]) -> bool:
-    """Returns True for visible characters with TABLE_FONT_SIZE and TABLE_FONT_NAME."""
+def matches_style(pdf_object: dict[str, Any], font_name: str, font_size: float) -> bool:
+    """Return true if pdf object is a character in the given font and size."""
     if pdf_object["object_type"] != "char":
         return False
 
+    fontname_check = pdf_object["fontname"].endswith(font_name)
     fontsize_check = math.isclose(
-        pdf_object["size"], TABLE_FONT_SIZE, abs_tol=FONT_SIZE_TOLERANCE
+        pdf_object["size"], font_size, abs_tol=FONT_SIZE_TOLERANCE
     )
-    fontname_check = pdf_object["fontname"].endswith(TABLE_FONT_NAME)
 
-    return fontsize_check and fontname_check
+    return fontname_check and fontsize_check
+
+
+def is_table_text(pdf_object: dict[str, Any]) -> bool:
+    """Returns True for chars in the Annex 4 table, skipping its overlaid duplicate."""
+    return matches_style(pdf_object, TABLE_FONT_NAME, TABLE_FONT_SIZE)
+
+
+def is_department_text(pdf_object: dict[str, Any]) -> bool:
+    """Return True for characters of the bold department headings."""
+    return matches_style(pdf_object, DEPARTMENT_FONT_NAME, DEPARTMENT_FONT_SIZE)
 
 
 def parse_number(text: str) -> float | None:
@@ -102,7 +117,8 @@ def parse_line(
     """Split one table line into (row id, name, {column: value})."""
     words = sorted(words, key=lambda w: w["x0"])
 
-    # A row starts with an id number, however line wrappings can occur, in those instances we set it to None
+    # A row starts with an id number, however line wrappings can occur, in those
+    # instances we set it to None
     row_id: int | None = None
     if words[0]["text"].isdigit():
         row_id = int(words[0]["text"])
@@ -125,7 +141,8 @@ def parse_line(
 
 
 def read_lines(pdf_path: Path) -> list[tuple[tuple[int, int], list[Word]]]:
-    """Group the filtered words from the tables into lines, sorted in reading order (page number, top)"""
+    """Group the filtered words from the tables into lines, sorted in reading order
+    (page number, top)"""
     lines: defaultdict[tuple[int, int], list[Word]] = defaultdict(list)
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages[166:176]:  # these pages have the actual data and tables
