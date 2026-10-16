@@ -124,19 +124,37 @@ def parse_line(
     return row_id, " ".join(name_parts), values
 
 
-def read_lines(pdf_path: Path) -> dict[tuple[int, int], list[Word]]:
+def read_lines(pdf_path: Path) -> list[tuple[tuple[int, int], list[Word]]]:
+    """Group the filtered words from the tables into lines, sorted in reading order (page number, top)"""
     lines: defaultdict[tuple[int, int], list[Word]] = defaultdict(list)
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages[166:176]:  # these pages have the actual data and tables
             filtered_page = page.filter(is_table_text)
             for word in filtered_page.extract_words():
                 lines[(page.page_number, round(word["top"]))].append(word)
-    return lines
+    return sorted(lines.items())
+
+
+def join_wrapped_names(
+    parsed: list[tuple[int | None, str, dict[str, float]]],
+) -> list[tuple[int, str, dict[str, float]]]:
+    """Rebuild names printed on two lines and only keep rows with an id."""
+    rows = []
+    for i, (row_id, name, values) in enumerate(parsed):
+        if row_id is None:
+            continue  # a half: skip, it's used by its row
+        if name == "":
+            name = parsed[i - 1][1] + " " + parsed[i + 1][1]
+        rows.append((row_id, name, values))
+    return rows
 
 
 if __name__ == "__main__":
     verify_pdf(TALLA_2024_PATH, TALLA_2024_URL, TALLA_2024_SHA256)
-
-    for (page_number, _), words in read_lines(TALLA_2024_PATH).items():
+    parsed_lines = []
+    for (page_number, _), words in read_lines(TALLA_2024_PATH):
         columns = ODD_PAGE_COLUMNS if page_number % 2 else EVEN_PAGE_COLUMNS
-        print(parse_line(words, columns))
+        parsed_lines.append(parse_line(words, columns))
+
+    rows = join_wrapped_names(parsed_lines)
+    print(rows)
